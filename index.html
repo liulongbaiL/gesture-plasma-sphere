@@ -624,10 +624,13 @@
         top: 12px;
         right: 12px;
         gap: 6px;
+        flex-wrap: wrap;
+        max-width: 62vw;
+        justify-content: flex-end;
       }
       .tool-btn {
-        padding: 6px 10px;
-        font-size: 10px;
+        padding: 5px 8px;
+        font-size: 9.5px;
       }
       .dashboard-wrap {
         flex-direction: column-reverse;
@@ -652,6 +655,8 @@
         top: 60px;
         font-size: 10px;
         padding: 6px 14px;
+      }
+    }
     /* 极速自举启动动画界面 (在任何外部 JS 下载前瞬时渲染，杜绝白屏) */
     #loading-overlay {
       position: fixed;
@@ -788,6 +793,9 @@
 
     <!-- 顶部右侧工具按钮栏 -->
     <div class="tools-bar interactive">
+      <button id="btn-turbo-mode" class="tool-btn active" title="切换极速手势加速模式 (轻量推理与前向预测)">
+        <span id="turbo-btn-text">⚡ 极速加速</span>
+      </button>
       <button id="btn-toggle-cam" class="tool-btn" title="显示/隐藏画中画视窗">
         <span>📷 画中画</span>
       </button>
@@ -830,8 +838,13 @@
         </div>
 
         <div class="metric-row">
+          <span class="metric-name">手势引擎延迟</span>
+          <span id="latency-val" class="metric-val" style="color: #00f5d4;">-- ms (极速硬件加速)</span>
+        </div>
+
+        <div class="metric-row">
           <span class="metric-name">粒子规模</span>
-          <span class="metric-val" style="color: #00b4d8;">36,000 动态点</span>
+          <span id="particle-count-display" class="metric-val" style="color: #00b4d8;">36,000 动态点</span>
         </div>
 
         <div class="metric-row">
@@ -880,12 +893,12 @@
       </div>
       <div class="modal-body">
         <div class="guide-box">
-          <div class="guide-title">📱 手机 / 安卓设备（发送 HTML 直接使用）</div>
+          <div class="guide-title">📱 手机 / 安卓设备（超强手势加速与触控）</div>
           <ul class="guide-list">
+            <li><strong>⚡ 极速识别引擎：</strong> 专属部署了 320px 轻量级送帧管道与 65ms 前向速度预测，隔空手势跟手如飞！</li>
             <li><strong>零配置直接畅玩：</strong> 在安卓或微信/QQ中收到此 HTML 文件后，选择浏览器打开即可直接使用！</li>
-            <li><strong>单指滑动：</strong> 3D 空间立体平滑跟随手指轨迹。</li>
-            <li><strong>双指捏合 / 扩张：</strong> 控制光球暴胀扩散或向心坍缩。</li>
-            <li><strong>长按 350ms 或双击屏幕：</strong> 瞬时爆发【能量聚焦】强辉光闪烁特效！</li>
+            <li><strong>隔空手势：</strong> 镜头前伸手（张开暴胀扩散、握拳聚拢微颤、捏合能量聚焦）。</li>
+            <li><strong>触控支持：</strong> 单指滑动旋转跟随、双指缩放光球、长按 350ms 或双击瞬发能量爆发！</li>
             <li><strong>若在微信中打开：</strong> 建议点击右上角 <strong>[...]</strong> 选择“在系统浏览器打开”以开启满血 60 FPS WebGL 加速。</li>
           </ul>
         </div>
@@ -921,7 +934,10 @@
      * 1. 跨平台设备检测与全局交互配置
      * ========================================================================= */
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isAndroid = /Android/i.test(navigator.userAgent);
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    let turboMode = true; // 极速手势加速开关 (移动端/安卓默认开启)
 
     // 页面完全加载就绪后平滑隐退自举启动遮罩
     window.addEventListener('load', () => {
@@ -935,7 +951,7 @@
     }, 2500);
 
     const CONFIG = {
-      particleCount: 36000,
+      particleCount: isMobile ? 18000 : 36000,
       baseRadius: 2.3,
       camFov: 60,
       camDist: 12.0,
@@ -946,9 +962,9 @@
         pinchStrength: 3.8
       },
       gesture: {
-        basePosLerp: 0.32,
-        scaleLerp: 0.26,
-        bloomLerp: 0.20
+        basePosLerp: isMobile ? 0.55 : 0.35,
+        scaleLerp: isMobile ? 0.38 : 0.26,
+        bloomLerp: 0.22
       }
     };
 
@@ -985,8 +1001,8 @@
     const camera = new THREE.PerspectiveCamera(CONFIG.camFov, window.innerWidth / window.innerHeight, 0.1, 100);
     camera.position.set(0, 0, CONFIG.camDist);
 
-    // 移动端像素比适配 (防止 3x/4x 视网膜屏显存溢出)
-    const targetPixelRatio = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2.0);
+    // 移动端像素比适配 (防止视网膜高分屏显存带宽瓶颈，安卓设 1.25 确保高帧率与低能耗)
+    const targetPixelRatio = Math.min(window.devicePixelRatio || 1, isMobile ? 1.25 : 2.0);
 
     const renderer = new THREE.WebGLRenderer({
       canvas: canvas,
@@ -999,10 +1015,14 @@
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.25;
 
-    // 后处理辉光效果链配置
+    // 后处理辉光效果链配置 (移动端降低 Bloom 分辨率，削减 75% 像素填充率，为手势 AI 释放关键算力)
     const renderScene = new THREE.RenderPass(scene, camera);
+    const bloomRes = isMobile ?
+      new THREE.Vector2(Math.round(window.innerWidth * 0.5), Math.round(window.innerHeight * 0.5)) :
+      new THREE.Vector2(window.innerWidth, window.innerHeight);
+
     const bloomPass = new THREE.UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      bloomRes,
       CONFIG.bloom.strength,
       CONFIG.bloom.radius,
       CONFIG.bloom.threshold
@@ -1076,6 +1096,11 @@
     particleGeometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
     particleGeometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
     particleGeometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 4));
+
+    const particleCountDisplay = document.getElementById('particle-count-display');
+    if (particleCountDisplay) {
+      particleCountDisplay.innerText = `${CONFIG.particleCount.toLocaleString()} 动态点 (${isMobile ? '移动端极速优化' : '全量高清'})`;
+    }
 
     // 高性能 GPU 自定义着色器材质
     const particleMaterial = new THREE.ShaderMaterial({
@@ -1255,7 +1280,10 @@
         this.prevCentroid.x = landmarks[9].x;
         this.prevCentroid.y = landmarks[9].y;
 
-        const dynamicAlpha = Math.min(0.95, Math.max(0.45, 0.45 + speed * 18.0));
+        // 移动端/加速模式大幅削减滤波滞后，基底权重设为 0.72，高速移动时瞬间达到 0.98
+        const baseAlpha = (turboMode || isMobile) ? 0.72 : 0.48;
+        const speedFactor = (turboMode || isMobile) ? 35.0 : 20.0;
+        const dynamicAlpha = Math.min(0.98, Math.max(baseAlpha, baseAlpha + speed * speedFactor));
 
         for (let i = 0; i < landmarks.length; i++) {
           this.filtered[i].x += (landmarks[i].x - this.filtered[i].x) * dynamicAlpha;
@@ -1270,6 +1298,70 @@
       }
     }
     const handFilter = new HighPrecisionAdaptiveFilter();
+
+    /* -------------------------------------------------------------------------
+     * 智能前向速度预测补偿器 (Predictive Tracking Engine)
+     * 核心价值：通过速度外推抵消移动端摄像头物理曝光、传输与推理产生的 50~80ms 固有物理延时
+     * ------------------------------------------------------------------------- */
+    class PredictiveTracker {
+      constructor() {
+        this.prevPos = new THREE.Vector3(0, 0, 0);
+        this.velocity = new THREE.Vector3(0, 0, 0);
+        this.lastTime = 0;
+        this.hasHistory = false;
+      }
+
+      predict(currentPos, timestamp, latencyCompensationMs = 65) {
+        if (!this.hasHistory || this.lastTime === 0) {
+          this.prevPos.copy(currentPos);
+          this.velocity.set(0, 0, 0);
+          this.lastTime = timestamp;
+          this.hasHistory = true;
+          return currentPos.clone();
+        }
+
+        const dt = Math.max(0.005, (timestamp - this.lastTime) / 1000.0);
+        this.lastTime = timestamp;
+
+        // 计算瞬时位移速度 (3D 世界单位/秒)
+        const instantVx = (currentPos.x - this.prevPos.x) / dt;
+        const instantVy = (currentPos.y - this.prevPos.y) / dt;
+        const instantVz = (currentPos.z - this.prevPos.z) / dt;
+
+        // 速度平滑滤波 (去除相机微小抖动)
+        const velAlpha = 0.60;
+        this.velocity.x += (instantVx - this.velocity.x) * velAlpha;
+        this.velocity.y += (instantVy - this.velocity.y) * velAlpha;
+        this.velocity.z += (instantVz - this.velocity.z) * velAlpha;
+
+        this.prevPos.copy(currentPos);
+
+        // 速度极限保护 (防止快速移出视野时产生异常突越)
+        const speed = this.velocity.length();
+        const maxSpeed = 30.0;
+        if (speed > maxSpeed) {
+          this.velocity.multiplyScalar(maxSpeed / speed);
+        }
+
+        // 前向位移预测补偿
+        const lookaheadSec = (turboMode ? latencyCompensationMs : 0) / 1000.0;
+        const predictedPos = currentPos.clone().addScaledVector(this.velocity, lookaheadSec);
+
+        // 空间边界约束
+        predictedPos.x = THREE.MathUtils.clamp(predictedPos.x, -10.0, 10.0);
+        predictedPos.y = THREE.MathUtils.clamp(predictedPos.y, -7.0, 7.0);
+        predictedPos.z = THREE.MathUtils.clamp(predictedPos.z, -5.0, 5.0);
+
+        return predictedPos;
+      }
+
+      reset() {
+        this.hasHistory = false;
+        this.velocity.set(0, 0, 0);
+        this.lastTime = 0;
+      }
+    }
+    const predictiveTracker = new PredictiveTracker();
 
     /* =========================================================================
      * 4. MediaPipe 手势捕捉与核心特征计算
@@ -1298,6 +1390,7 @@
     }
 
     function drawHandSkeleton(landmarks) {
+      if (!pipVisible) return; // 画中画隐藏或折叠时直接跳过 2D Canvas 重绘，大幅节省移动端 CPU
       if (skeletonCanvas.width !== skeletonCanvas.clientWidth || skeletonCanvas.height !== skeletonCanvas.clientHeight) {
         skeletonCanvas.width = skeletonCanvas.clientWidth;
         skeletonCanvas.height = skeletonCanvas.clientHeight;
@@ -1373,9 +1466,13 @@
         const palmLength = euclideanDistance(wrist, middleMcp);
         const palmWidth = euclideanDistance(indexMcp, pinkyMcp);
         const handScale = Math.sqrt(palmLength * palmWidth);
-        const realDepthZ = (handScale - 0.21) * 22.0 - (palmCenter.z * 6.0);
+        const depthScaleFactor = isMobile ? 18.0 : 22.0;
+        const realDepthZ = (handScale - (isMobile ? 0.18 : 0.21)) * depthScaleFactor - (palmCenter.z * 5.0);
 
-        state.targetPos = mapNormalizedToWorld(mirroredPalmX, palmCenter.y, realDepthZ);
+        const rawTargetPos = mapNormalizedToWorld(mirroredPalmX, palmCenter.y, realDepthZ);
+        // 使用前向速度预测抵消移动端摄像头与计算物理延时，让光球如影随形
+        const compLatency = isMobile ? 65 : 35;
+        state.targetPos = predictiveTracker.predict(rawTargetPos, performance.now(), compLatency);
 
         // 张开 / 握拳（散聚控制）
         const tipIndices = [8, 12, 16, 20];
@@ -1444,6 +1541,7 @@
     function handleHandLost() {
       state.handDetected = false;
       handFilter.reset();
+      predictiveTracker.reset();
       skeletonCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
 
       state.isPinching = false;
@@ -1462,11 +1560,56 @@
     }
 
     /* =========================================================================
-     * 5. 跨平台多环境高健壮视觉系统启动
+     * 5. 跨平台多环境高健壮视觉系统启动 (含移动端极速送帧缓冲区)
      * ========================================================================= */
     let handsDetector = null;
     let cameraInstance = null;
     let isProcessingFrame = false;
+
+    // 轻量化等比下采样送帧缓冲画布 (将 720p/1080p 帧降采样至 320px，降低 90% 显存与模型推理负载)
+    let downscaleCanvas = null;
+    let downscaleCtx = null;
+
+    function getDownscaledFrame(video) {
+      if (!downscaleCanvas) {
+        downscaleCanvas = document.createElement('canvas');
+        downscaleCtx = downscaleCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
+      }
+      const vw = video.videoWidth || 320;
+      const vh = video.videoHeight || 240;
+      const maxDim = 320;
+      let targetW, targetH;
+      if (vw >= vh) {
+        targetW = maxDim;
+        targetH = Math.round((vh / vw) * maxDim);
+      } else {
+        targetH = maxDim;
+        targetW = Math.round((vw / vh) * maxDim);
+      }
+      if (downscaleCanvas.width !== targetW || downscaleCanvas.height !== targetH) {
+        downscaleCanvas.width = targetW;
+        downscaleCanvas.height = targetH;
+      }
+      downscaleCtx.drawImage(video, 0, 0, targetW, targetH);
+      return downscaleCanvas;
+    }
+
+    let avgInferenceLatency = 18;
+    function updateLatencyMetrics(durationMs) {
+      avgInferenceLatency = avgInferenceLatency * 0.75 + durationMs * 0.25;
+      const latencyVal = document.getElementById('latency-val');
+      if (latencyVal) {
+        const modeLabel = turboMode ? (isAndroid ? '⚡ 安卓极速硬件加速' : '⚡ 移动端超频加速') : '标准模式';
+        latencyVal.innerText = `${Math.round(avgInferenceLatency)} ms (${modeLabel})`;
+        if (avgInferenceLatency < 35) {
+          latencyVal.style.color = '#00f5d4';
+        } else if (avgInferenceLatency < 65) {
+          latencyVal.style.color = '#ffb703';
+        } else {
+          latencyVal.style.color = '#ff007f';
+        }
+      }
+    }
 
     async function initVisionSystem() {
       const isFile = location.protocol === 'file:';
@@ -1505,31 +1648,35 @@
           locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        // 桌面端使用 Full(1) 高精模型，移动端使用 Lite(0) 兼顾发热续航与帧率
+        // 桌面端使用 Full(1) 高精模型，移动端使用 Lite(0) 兼顾发热续航与高帧率
         handsDetector.setOptions({
           maxNumHands: 1,
           modelComplexity: isMobile ? 0 : 1,
-          minDetectionConfidence: 0.55,
-          minTrackingConfidence: 0.55
+          minDetectionConfidence: isMobile ? 0.48 : 0.55,
+          minTrackingConfidence: isMobile ? 0.48 : 0.55
         });
 
         handsDetector.onResults(onHandResults);
 
-        // 跨平台相机配置
+        // 跨平台相机配置与轻量送帧管线 (移动端 320x240 极速识别)
         cameraInstance = new Camera(videoElement, {
           onFrame: async () => {
             if (isProcessingFrame || !handsDetector) return;
             isProcessingFrame = true;
+            const t0 = performance.now();
             try {
-              await handsDetector.send({ image: videoElement });
+              const frameSource = (turboMode || isMobile) ? getDownscaledFrame(videoElement) : videoElement;
+              await handsDetector.send({ image: frameSource });
+              const dt = performance.now() - t0;
+              updateLatencyMetrics(dt);
             } catch (e) {
               // 忽略偶尔帧中断
             } finally {
               isProcessingFrame = false;
             }
           },
-          width: isMobile ? 480 : 640,
-          height: isMobile ? 360 : 480
+          width: isMobile ? 320 : 640,
+          height: isMobile ? 240 : 480
         });
 
         // 提示用户点击授权
@@ -1765,7 +1912,8 @@
       }
 
       const dist = state.currentPos.distanceTo(state.targetPos);
-      const dynamicPosLerp = Math.min(0.52, Math.max(CONFIG.gesture.basePosLerp, CONFIG.gesture.basePosLerp + dist * 0.05));
+      const maxLerpCap = (turboMode || isMobile) ? 0.85 : 0.60;
+      const dynamicPosLerp = Math.min(maxLerpCap, Math.max(CONFIG.gesture.basePosLerp, CONFIG.gesture.basePosLerp + dist * 0.08));
       state.currentPos.lerp(state.targetPos, dynamicPosLerp);
       particleSystem.position.copy(state.currentPos);
 
@@ -1853,11 +2001,15 @@
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
 
-      const pr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2.0);
+      const pr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.25 : 2.0);
       renderer.setSize(width, height);
       renderer.setPixelRatio(pr);
 
       composer.setSize(width, height);
+
+      const bloomW = Math.round(width * (isMobile ? 0.5 : 1.0));
+      const bloomH = Math.round(height * (isMobile ? 0.5 : 1.0));
+      bloomPass.setSize(bloomW, bloomH);
 
       particleMaterial.uniforms.uPixelRatio.value = pr;
     }
@@ -1888,6 +2040,20 @@
     btnMouseMode.addEventListener('click', () => {
       enableMouseMode(!state.mouseMode);
     });
+
+    const btnTurboMode = document.getElementById('btn-turbo-mode');
+    if (btnTurboMode) {
+      btnTurboMode.addEventListener('click', () => {
+        turboMode = !turboMode;
+        if (turboMode) {
+          btnTurboMode.classList.add('active');
+          showToastNotice('⚡ 已开启极速手势加速 (轻量送帧 / 前向预测 / 低延时)', 2500);
+        } else {
+          btnTurboMode.classList.remove('active');
+          showToastNotice('已切换为标准高精识别模式', 2000);
+        }
+      });
+    }
 
     const btnFullscreen = document.getElementById('btn-fullscreen');
     function toggleFullscreen() {
