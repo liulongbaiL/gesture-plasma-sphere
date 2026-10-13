@@ -1428,7 +1428,7 @@
         // 跨平台相机配置
         cameraInstance = new Camera(videoElement, {
           onFrame: async () => {
-            if (isProcessingFrame || state.mouseMode || !handsDetector) return;
+            if (isProcessingFrame || !handsDetector) return;
             isProcessingFrame = true;
             try {
               await handsDetector.send({ image: videoElement });
@@ -1442,30 +1442,45 @@
           height: isMobile ? 360 : 480
         });
 
-        // 摄像头启动竞速超时熔断 (防止在不支持 file:// 或无权限的环境下永久挂起)
+        // 提示用户点击授权
+        if (!isFile) {
+          statusText.innerText = '等待摄像头授权 (请在上方弹窗点击【允许】)...';
+          fastToast.classList.remove('fade-out');
+          toastText.innerText = '👆 请在浏览器弹窗点击【允许使用摄像头】以开启手势追踪';
+        }
+
+        // 摄像头启动竞速熔断 (本地文件 3.5s 快速回退，在线 HTTPS 给予 15s 充裕授权时间)
         const startPromise = cameraInstance.start();
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), isFile ? 3500 : 6000)
+          setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), isFile ? 3500 : 15000)
         );
 
         await Promise.race([startPromise, timeoutPromise]);
+
+        state.mouseMode = false;
+        const btnMouseMode = document.getElementById('btn-mouse-mode');
+        if (btnMouseMode) btnMouseMode.classList.remove('active');
 
         toastText.innerText = '🟢 高精手势引擎就绪！请向画面伸出手掌';
         toastIcon.innerText = '🖐️';
         statusText.innerText = '摄像头待命 (请向镜头展示手掌)';
         statusIndicator.className = 'status-indicator ready';
-        setTimeout(() => fastToast.classList.add('fade-out'), 3000);
+        setTimeout(() => fastToast.classList.add('fade-out'), 3500);
 
       } catch (err) {
-        console.warn('摄像头或 MediaPipe 启动异常，启用全功能触控模式：', err);
+        console.warn('摄像头或 MediaPipe 启动状态：', err);
         if (isFile) {
           statusText.innerText = '触控/鼠标互动就绪 (本地文件模式)';
           statusIndicator.className = 'status-indicator mouse';
           showToastNotice('📁 本地文件触控/鼠标模式就绪！如需在电脑开启摄像头手势，请点击右上角【📖 指南】。', 5000);
+        } else if (err && (err.name === 'NotAllowedError' || (err.message && err.message.includes('Permission')))) {
+          statusText.innerText = '触控/鼠标模式 (摄像头未授权)';
+          statusIndicator.className = 'status-indicator mouse';
+          showToastNotice('📷 摄像头未授权，已切换为【全功能触控/鼠标模式】；若需手势请点击地址栏权限重新允许。', 6000);
         } else {
           statusText.innerText = '触控/鼠标互动模式 (待命)';
           statusIndicator.className = 'status-indicator mouse';
-          showToastNotice('未检测到可用摄像头或权限受限，已切换为【全功能触控/鼠标互动模式】！', 4000);
+          showToastNotice('未检测到可用摄像头或硬件占用，已切换为【全功能触控/鼠标互动模式】！', 4000);
         }
         enableMouseMode(true);
       }
