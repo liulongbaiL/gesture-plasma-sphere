@@ -937,7 +937,7 @@
     const isAndroid = /Android/i.test(navigator.userAgent);
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-    let turboMode = true; // 极速手势加速开关 (移动端/安卓默认开启)
+    let turboMode = isMobile; // 移动端/安卓默认开启极速模式，桌面端默认使用满血高精模式
 
     // 页面完全加载就绪后平滑隐退自举启动遮罩
     window.addEventListener('load', () => {
@@ -962,9 +962,9 @@
         pinchStrength: 3.8
       },
       gesture: {
-        basePosLerp: isMobile ? 0.55 : 0.35,
+        basePosLerp: isMobile ? 0.55 : 0.32,
         scaleLerp: isMobile ? 0.38 : 0.26,
-        bloomLerp: 0.22
+        bloomLerp: 0.20
       }
     };
 
@@ -1280,9 +1280,9 @@
         this.prevCentroid.x = landmarks[9].x;
         this.prevCentroid.y = landmarks[9].y;
 
-        // 移动端/加速模式大幅削减滤波滞后，基底权重设为 0.72，高速移动时瞬间达到 0.98
-        const baseAlpha = (turboMode || isMobile) ? 0.72 : 0.48;
-        const speedFactor = (turboMode || isMobile) ? 35.0 : 20.0;
+        // 移动端加速模式大幅削减滤波滞后，桌面端保持平滑高精与抗抖
+        const baseAlpha = isMobile ? 0.72 : 0.48;
+        const speedFactor = isMobile ? 35.0 : 20.0;
         const dynamicAlpha = Math.min(0.98, Math.max(baseAlpha, baseAlpha + speed * speedFactor));
 
         for (let i = 0; i < landmarks.length; i++) {
@@ -1467,12 +1467,13 @@
         const palmWidth = euclideanDistance(indexMcp, pinkyMcp);
         const handScale = Math.sqrt(palmLength * palmWidth);
         const depthScaleFactor = isMobile ? 18.0 : 22.0;
-        const realDepthZ = (handScale - (isMobile ? 0.18 : 0.21)) * depthScaleFactor - (palmCenter.z * 5.0);
+        const realDepthZ = (handScale - (isMobile ? 0.18 : 0.21)) * depthScaleFactor - (palmCenter.z * (isMobile ? 5.0 : 6.0));
 
         const rawTargetPos = mapNormalizedToWorld(mirroredPalmX, palmCenter.y, realDepthZ);
-        // 使用前向速度预测抵消移动端摄像头与计算物理延时，让光球如影随形
-        const compLatency = isMobile ? 65 : 35;
-        state.targetPos = predictiveTracker.predict(rawTargetPos, performance.now(), compLatency);
+        // 移动端启用前向预测抵消物理延时，桌面端满血低延迟直接追踪原始目标点
+        state.targetPos = (isMobile && turboMode)
+          ? predictiveTracker.predict(rawTargetPos, performance.now(), 65)
+          : rawTargetPos;
 
         // 张开 / 握拳（散聚控制）
         const tipIndices = [8, 12, 16, 20];
@@ -1566,17 +1567,18 @@
     let cameraInstance = null;
     let isProcessingFrame = false;
 
-    // 轻量化等比下采样送帧缓冲画布 (将 720p/1080p 帧降采样至 320px，降低 90% 显存与模型推理负载)
+    // 轻量化等比下采样送帧缓冲画布 (仅在移动端使用，降低 90% 显存与模型推理负载)
     let downscaleCanvas = null;
     let downscaleCtx = null;
 
     function getDownscaledFrame(video) {
       if (!downscaleCanvas) {
         downscaleCanvas = document.createElement('canvas');
-        downscaleCtx = downscaleCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
+        downscaleCtx = downscaleCanvas.getContext('2d');
       }
       const vw = video.videoWidth || 320;
       const vh = video.videoHeight || 240;
+      if (vw <= 0 || vh <= 0) return video;
       const maxDim = 320;
       let targetW, targetH;
       if (vw >= vh) {
@@ -1590,8 +1592,12 @@
         downscaleCanvas.width = targetW;
         downscaleCanvas.height = targetH;
       }
-      downscaleCtx.drawImage(video, 0, 0, targetW, targetH);
-      return downscaleCanvas;
+      try {
+        downscaleCtx.drawImage(video, 0, 0, targetW, targetH);
+        return downscaleCanvas;
+      } catch (err) {
+        return video;
+      }
     }
 
     let avgInferenceLatency = 18;
@@ -1599,7 +1605,7 @@
       avgInferenceLatency = avgInferenceLatency * 0.75 + durationMs * 0.25;
       const latencyVal = document.getElementById('latency-val');
       if (latencyVal) {
-        const modeLabel = turboMode ? (isAndroid ? '⚡ 安卓极速硬件加速' : '⚡ 移动端超频加速') : '标准模式';
+        const modeLabel = isMobile ? (isAndroid ? '⚡ 安卓极速硬件加速' : '⚡ 移动端超频加速') : '🖥️ 桌面满血高精模式';
         latencyVal.innerText = `${Math.round(avgInferenceLatency)} ms (${modeLabel})`;
         if (avgInferenceLatency < 35) {
           latencyVal.style.color = '#00f5d4';
@@ -1648,24 +1654,26 @@
           locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        // 桌面端使用 Full(1) 高精模型，移动端使用 Lite(0) 兼顾发热续航与高帧率
+        // 桌面端使用 Full(1) 高精模型 (0.50 阈值优化桌面中远距离捕捉)，移动端使用 Lite(0) 兼顾发热续航与高帧率
         handsDetector.setOptions({
           maxNumHands: 1,
           modelComplexity: isMobile ? 0 : 1,
-          minDetectionConfidence: isMobile ? 0.48 : 0.55,
-          minTrackingConfidence: isMobile ? 0.48 : 0.55
+          minDetectionConfidence: isMobile ? 0.48 : 0.50,
+          minTrackingConfidence: isMobile ? 0.48 : 0.50
         });
 
         handsDetector.onResults(onHandResults);
 
-        // 跨平台相机配置与轻量送帧管线 (移动端 320x240 极速识别)
+        // 跨平台相机配置与送帧管线 (桌面端直送原生 video 保证远距精准，移动端采用轻量 downscaleCanvas 极速响应)
         cameraInstance = new Camera(videoElement, {
           onFrame: async () => {
             if (isProcessingFrame || !handsDetector) return;
             isProcessingFrame = true;
             const t0 = performance.now();
             try {
-              const frameSource = (turboMode || isMobile) ? getDownscaledFrame(videoElement) : videoElement;
+              // 桌面 Windows/Mac 始终直接传递 videoElement (利用 Direct3D/WebGL 零拷贝原生分辨率，确保桌面正常距离的手势捕捉率 100%)
+              // 移动端/Android 则通过 downscaleCanvas 下采样至 320px 保证 60 FPS
+              const frameSource = isMobile ? getDownscaledFrame(videoElement) : videoElement;
               await handsDetector.send({ image: frameSource });
               const dt = performance.now() - t0;
               updateLatencyMetrics(dt);
@@ -1912,8 +1920,8 @@
       }
 
       const dist = state.currentPos.distanceTo(state.targetPos);
-      const maxLerpCap = (turboMode || isMobile) ? 0.85 : 0.60;
-      const dynamicPosLerp = Math.min(maxLerpCap, Math.max(CONFIG.gesture.basePosLerp, CONFIG.gesture.basePosLerp + dist * 0.08));
+      const maxLerpCap = isMobile ? 0.85 : 0.52;
+      const dynamicPosLerp = Math.min(maxLerpCap, Math.max(CONFIG.gesture.basePosLerp, CONFIG.gesture.basePosLerp + dist * (isMobile ? 0.08 : 0.05)));
       state.currentPos.lerp(state.targetPos, dynamicPosLerp);
       particleSystem.position.copy(state.currentPos);
 
@@ -2042,15 +2050,27 @@
     });
 
     const btnTurboMode = document.getElementById('btn-turbo-mode');
+    const turboBtnText = document.getElementById('turbo-btn-text');
     if (btnTurboMode) {
+      if (!isMobile) {
+        if (turboBtnText) turboBtnText.innerText = '🖥️ 桌面高精';
+        btnTurboMode.title = '桌面满血高精手势追踪模式 (原生分辨率+硬件加速)';
+      }
       btnTurboMode.addEventListener('click', () => {
         turboMode = !turboMode;
         if (turboMode) {
           btnTurboMode.classList.add('active');
-          showToastNotice('⚡ 已开启极速手势加速 (轻量送帧 / 前向预测 / 低延时)', 2500);
+          if (isMobile) {
+            if (turboBtnText) turboBtnText.innerText = '⚡ 极速加速';
+            showToastNotice('⚡ 已开启移动端极速加速 (轻量送帧 / 前向预测 / 低延时)', 2500);
+          } else {
+            if (turboBtnText) turboBtnText.innerText = '⚡ 桌面超频';
+            showToastNotice('⚡ 已开启桌面超频响应模式', 2000);
+          }
         } else {
           btnTurboMode.classList.remove('active');
-          showToastNotice('已切换为标准高精识别模式', 2000);
+          if (turboBtnText) turboBtnText.innerText = isMobile ? '🎯 标准模式' : '🖥️ 桌面高精';
+          showToastNotice('已恢复满血高精手势模式', 2000);
         }
       });
     }
