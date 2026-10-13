@@ -652,27 +652,106 @@
         top: 60px;
         font-size: 10px;
         padding: 6px 14px;
-      }
+    /* 极速自举启动动画界面 (在任何外部 JS 下载前瞬时渲染，杜绝白屏) */
+    #loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, #0b1426 0%, #050811 100%);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.6s;
+    }
+    #loading-overlay.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .loader-ring {
+      width: 68px;
+      height: 68px;
+      border: 3px solid rgba(0, 245, 212, 0.15);
+      border-top: 3px solid #00f5d4;
+      border-right: 3px solid #00b4d8;
+      border-radius: 50%;
+      animation: spin-ring 1s linear infinite;
+      box-shadow: 0 0 20px rgba(0, 245, 212, 0.35);
+      margin-bottom: 22px;
+    }
+    @keyframes spin-ring {
+      to { transform: rotate(360deg); }
+    }
+    .loader-logo {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: 2.5px;
+      color: #fff;
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #00f5d4, #00b4d8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .loader-status {
+      font-size: 11px;
+      color: #7f9eb2;
+      font-family: var(--font-mono);
+      letter-spacing: 0.8px;
+      margin-bottom: 16px;
+      max-width: 80vw;
+      text-align: center;
+    }
+    .loader-bar-wrap {
+      width: 220px;
+      max-width: 80vw;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loader-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #00f5d4, #7b2cbf);
+      border-radius: 2px;
+      transition: width 0.25s ease;
+      box-shadow: 0 0 10px #00f5d4;
     }
   </style>
 
-  <!-- 1. Three.js Core (r128) [双 CDN 镜像自动容灾] -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/build/three.min.js'"></script>
+  <!-- 1. Three.js Core (r128) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 
-  <!-- 2. Three.js Postprocessing Shaders & Passes (严格顺序：Pass.js 优先保证跨平台兼容) -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/postprocessing/Pass.js'"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/shaders/CopyShader.js'"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js'"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/postprocessing/ShaderPass.js'"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js'"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js'"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js" onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js'"></script>
+  <!-- 2. Three.js Postprocessing Shaders & Passes (严格顺序保证跨平台兼容) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
 
-  <!-- 3. Google MediaPipe Hands & Camera Utils [双 CDN 镜像自动容灾] -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous" onerror="this.onerror=null;this.src='https://unpkg.com/@mediapipe/camera_utils/camera_utils.js'"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous" onerror="this.onerror=null;this.src='https://unpkg.com/@mediapipe/hands/hands.js'"></script>
+  <!-- 3. Google MediaPipe Hands & Camera Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
+
+  <!-- 极速启动遮罩 (在 CDN 脚本加载期间立即展示，告别黑屏) -->
+  <div id="loading-overlay">
+    <div class="loader-ring"></div>
+    <div class="loader-logo">NEBULA CORE</div>
+    <div class="loader-status" id="loader-status-text">正在连接量子渲染引擎...</div>
+    <div class="loader-bar-wrap">
+      <div id="loader-bar-fill" class="loader-bar-fill"></div>
+    </div>
+  </div>
 
   <!-- WebGL 渲染画布 -->
   <canvas id="webgl-canvas"></canvas>
@@ -843,6 +922,17 @@
      * ========================================================================= */
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    // 页面完全加载就绪后平滑隐退自举启动遮罩
+    window.addEventListener('load', () => {
+      const overlay = document.getElementById('loading-overlay');
+      if (overlay) setTimeout(() => overlay.classList.add('fade-out'), 350);
+    });
+    // 兜底保护：2.5 秒后若 load 事件未触发也自动隐退遮罩，绝不挡住用户交互
+    setTimeout(() => {
+      const overlay = document.getElementById('loading-overlay');
+      if (overlay && !overlay.classList.contains('fade-out')) overlay.classList.add('fade-out');
+    }, 2500);
 
     const CONFIG = {
       particleCount: 36000,
