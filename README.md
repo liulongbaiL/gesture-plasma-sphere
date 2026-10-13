@@ -1,2 +1,29 @@
-# gesture-plasma-sphere
-手势交互控制 3D 粒子光球 | Gesture-Controlled 3D Particle Plasma Sphere (Three.js + MediaPipe Hands + UnrealBloomPass)
+# 🌌 手势交互 3D 粒子光球 | Gesture Plasma Sphere
+
+基于 **Three.js (r128)** + **UnrealBloomPass** + **MediaPipe Hands** 打造的纯前端“手势交互控制 3D 粒子光球”单页面应用（SPA）。无需后端，支持跨平台在 Windows、macOS、Android 与 iOS 浏览器中直接运行。
+
+## 🔗 在线体验 (GitHub Pages HTTPS)
+👉 **[点击立即在线体验 (支持手机与电脑直接开启摄像头手势)](https://liulongbail.github.io/gesture-plasma-sphere/)**
+
+---
+
+## ✨ 核心特性
+- **36,000+ 斐波那契球面粒子系统**：多层色彩渐变（白炽极核、电光青、深邃天青、外晕极光紫）+ 自定义 GLSL 表面湍流着色器。
+- **电影级辉光后处理**：内置 `EffectComposer` + `UnrealBloomPass`，支持动态泛光强度与能量聚焦闪白。
+- **高精 3D 空间手势追踪**：
+  - **三维跟随**：4 锚点掌心质心计算 + 真实手掌尺寸 Z 轴景深映射 + 动态自适应速度滤波。
+  - **张开 / 握拳散聚控制**：五指张开向外暴胀扩散，握拳向球心极速坍缩并产生高频微颤。
+  - **食指拇指捏合 (Pinch Focus)**：触发核心超聚态能量聚焦，Bloom 发光强度倍增。
+  - **手势丢失保护**：未检测到手势时平滑回归屏幕中心并进入自主巡航待机状态。
+- **跨平台全功能触屏 / 鼠标双模支持**：
+  - **手机触屏**：单指拖曳跟随、双指捏合/扩张缩放、长按 350ms 或双击触发能量聚焦、陀螺仪重力倾斜感知。
+  - **电脑鼠标**：鼠标移动跟随、滚轮缩放膨胀、左键长按触发能量聚焦。
+
+## 🚀 本地运行方式
+1. **直接打开**：双击 `index.html` 即可进入全功能鼠标/触屏交互模式。
+2. **Windows 一键开启摄像头手势**：双击 `start_with_camera.bat` 自动启动本地安全上下文并调起摄像头。
+3. **命令行启动**：
+   ```bash
+   python -m http.server 8899 --bind 127.0.0.1
+   ```
+   随后在浏览器访问 `http://127.0.0.1:8899`。
